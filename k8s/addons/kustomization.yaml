@@ -1,0 +1,47 @@
+# Cluster add-ons, vendored from upstream and patched for kind:
+#   metrics-server.yaml  <- github.com/kubernetes-sigs/metrics-server releases (v0.9.1)
+#   contour.yaml         <- projectcontour.io/quickstart/contour.yaml (v1.33.8)
+# Apply with:  kubectl apply --server-side -k k8s/addons
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - metrics-server.yaml
+  - contour.yaml
+patches:
+  # kind kubelets use self-signed serving certs
+  - target:
+      kind: Deployment
+      name: metrics-server
+      namespace: kube-system
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --kubelet-insecure-tls
+  # Run Envoy only on the control-plane node, whose port 80/443 is mapped to
+  # localhost:8080/8443 (see cluster/kind-config.yaml)
+  - target:
+      kind: DaemonSet
+      name: envoy
+      namespace: projectcontour
+    patch: |-
+      - op: add
+        path: /spec/template/spec/nodeSelector
+        value:
+          ingress-ready: "true"
+      - op: add
+        path: /spec/template/spec/tolerations
+        value:
+          - key: node-role.kubernetes.io/control-plane
+            operator: Exists
+            effect: NoSchedule
+  # No cloud load balancer on kind; traffic arrives via hostPort instead
+  - target:
+      kind: Service
+      name: envoy
+      namespace: projectcontour
+    patch: |-
+      - op: replace
+        path: /spec/type
+        value: NodePort
+      - op: remove
+        path: /spec/externalTrafficPolicy

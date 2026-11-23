@@ -1,0 +1,68 @@
+# Identity used by kubernetes-mcp-server. Kubernetes RBAC is the real security
+# boundary; the server's read_only / denied_resources settings are only guardrails.
+#
+#  - built-in `view` ClusterRole: read most namespaced objects (pods, pods/log,
+#    deployments, services, events, HPAs, ...) but NOT Secrets. metrics-server
+#    aggregates pod/node metrics read access into `view`.
+#  - `mcp-cluster-reader`: cluster-scoped objects that `view` does not cover.
+#    nodes/proxy is deliberately NOT granted (it can be abused to reach the
+#    kubelet API), so nodes_log / nodes_stats_summary will be denied.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mcp
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mcp-viewer
+  namespace: mcp
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: mcp-viewer-view
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: view
+subjects:
+  - kind: ServiceAccount
+    name: mcp-viewer
+    namespace: mcp
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: mcp-cluster-reader
+rules:
+  - apiGroups: [""]
+    resources: ["nodes", "persistentvolumes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingressclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["pods", "nodes"]
+    verbs: ["get", "list"]
+  # Prometheus Operator objects (Step 6): alert rules and scrape configs
+  - apiGroups: ["monitoring.coreos.com"]
+    resources: ["prometheusrules", "servicemonitors", "podmonitors",
+                "prometheuses", "alertmanagers"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: mcp-viewer-cluster-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: mcp-cluster-reader
+subjects:
+  - kind: ServiceAccount
+    name: mcp-viewer
+    namespace: mcp

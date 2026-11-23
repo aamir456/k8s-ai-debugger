@@ -1,0 +1,87 @@
+# Alert rules for the demo app. Each one maps to a chaos scenario
+# (scenarios/chaos.ps1), so Claude can start an investigation from a firing alert.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: notes-app
+  namespace: monitoring
+spec:
+  groups:
+    - name: notes-app.rules
+      rules:
+        - alert: NotesAppDown
+          expr: sum(up{namespace="demo-app", pod=~"notes-app-.*"}) == 0 or absent(up{namespace="demo-app", pod=~"notes-app-.*"})
+          for: 1m
+          labels: {severity: critical, app: notes-app}
+          annotations:
+            summary: No notes-app pod is being scraped successfully.
+
+        - alert: NotesAppPodNotReady
+          expr: sum by (namespace, pod) (kube_pod_status_ready{namespace="demo-app", pod=~"notes-app-.*", condition="false"}) == 1
+          for: 1m
+          labels: {severity: warning, app: notes-app}
+          annotations:
+            summary: "Pod {{ $labels.pod }} is running but not Ready (readiness probe failing)."
+
+        - alert: NotesAppCrashLooping
+          expr: increase(kube_pod_container_status_restarts_total{namespace="demo-app"}[5m]) > 2
+          labels: {severity: warning, app: notes-app}
+          annotations:
+            summary: "Container {{ $labels.container }} in {{ $labels.pod }} restarted {{ $value | humanize }} times in 5m."
+
+        - alert: NotesAppOOMKilled
+          expr: |
+            (kube_pod_container_status_last_terminated_reason{namespace="demo-app", reason="OOMKilled"} == 1)
+            and on (namespace, pod, container)
+            (increase(kube_pod_container_status_restarts_total{namespace="demo-app"}[10m]) > 0)
+          labels: {severity: warning, app: notes-app}
+          annotations:
+            summary: "Container {{ $labels.container }} in {{ $labels.pod }} was OOMKilled."
+
+        - alert: NotesAppImagePullFailing
+          expr: kube_pod_container_status_waiting_reason{namespace="demo-app", reason=~"ErrImagePull|ImagePullBackOff"} == 1
+          for: 1m
+          labels: {severity: warning, app: notes-app}
+          annotations:
+            summary: "Pod {{ $labels.pod }} cannot pull its image ({{ $labels.reason }})."
+
+        - alert: NotesAppPodPending
+          expr: kube_pod_status_phase{namespace="demo-app", phase="Pending"} == 1
+          for: 2m
+          labels: {severity: warning, app: notes-app}
+          annotations:
+            summary: "Pod {{ $labels.pod }} has been Pending for more than 2 minutes."
+
+        - alert: RedisDown
+          expr: kube_statefulset_status_replicas_ready{namespace="demo-app", statefulset="redis"} < 1
+          for: 1m
+          labels: {severity: critical, app: redis}
+          annotations:
+            summary: Redis has no ready replicas; notes-app cannot store or read notes.
+
+        - alert: NotesAppHighErrorRate
+          expr: |
+            sum(rate(http_requests_total{namespace="demo-app", status=~"5.."}[5m]))
+              / sum(rate(http_requests_total{namespace="demo-app"}[5m])) > 0.05
+          for: 2m
+          labels: {severity: warning, app: notes-app}
+          annotations:
+            summary: "{{ $value | humanizePercentage }} of notes-app requests return 5xx."
+
+        - alert: NotesAppHPAMaxedOut
+          expr: |
+            kube_horizontalpodautoscaler_status_current_replicas{namespace="demo-app"}
+              >= kube_horizontalpodautoscaler_spec_max_replicas{namespace="demo-app"}
+          for: 2m
+          labels: {severity: warning, app: notes-app}
+          annotations:
+            summary: "HPA {{ $labels.horizontalpodautoscaler }} is at max replicas."
+
+        - alert: NotesAppMemoryNearLimit
+          expr: |
+            max by (pod) (container_memory_working_set_bytes{namespace="demo-app", container="notes-app"})
+              / max by (pod) (kube_pod_container_resource_limits{namespace="demo-app", container="notes-app", resource="memory"}) > 0.8
+          for: 1m
+          labels: {severity: warning, app: notes-app}
+          annotations:
+            summary: "Pod {{ $labels.pod }} uses {{ $value | humanizePercentage }} of its memory limit."

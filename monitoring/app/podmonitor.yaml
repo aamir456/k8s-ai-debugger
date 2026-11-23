@@ -1,0 +1,14 @@
+# Scrape the notes-app /metrics endpoint on every pod
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: notes-app
+  namespace: demo-app
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: notes-app
+  podMetricsEndpoints:
+    - port: http
+      path: /metrics
+      interval: 15s

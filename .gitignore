@@ -1,0 +1,10 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Machine-specific / secret material - never commit
+.mcp.json
+*.kubeconfig
+kubeconfig*
+.env

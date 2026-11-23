@@ -1,0 +1,86 @@
+# kube-prometheus-stack 93.6.1 values for the kind cluster `ai-debug`
+# Installed by monitoring/install.ps1 (Helm runs in a container).
+#
+# Access from Windows (Contour ingress on localhost:8080):
+#   Grafana       http://grafana.localhost:8080
+#   Prometheus    http://prometheus.localhost:8080
+#   Alertmanager  http://alertmanager.localhost:8080
+# Access from the MCP server container (Docker network "kind", NodePorts):
+#   Prometheus    http://ai-debug-control-plane:30090
+#   Alertmanager  http://ai-debug-control-plane:30093
+
+fullnameOverride: kps
+
+# kind binds these control-plane components to 127.0.0.1 inside the node, so
+# Prometheus can't scrape them; disabling avoids permanently-firing "target down" alerts.
+kubeEtcd:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeProxy:
+  enabled: false
+
+prometheus:
+  service:
+    type: NodePort
+    nodePort: 30090
+  ingress:
+    enabled: true
+    ingressClassName: contour
+    hosts: [prometheus.localhost]
+    paths: [/]
+  prometheusSpec:
+    scrapeInterval: 15s
+    evaluationInterval: 15s
+    retention: 3d
+    # Pick up ServiceMonitors / PodMonitors / PrometheusRules from every namespace,
+    # not only the ones labelled with this Helm release.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    resources:
+      requests:
+        cpu: 100m
+        memory: 400Mi
+      limits:
+        memory: 1Gi
+
+alertmanager:
+  service:
+    type: NodePort
+    nodePort: 30093
+  ingress:
+    enabled: true
+    ingressClassName: contour
+    hosts: [alertmanager.localhost]
+    paths: [/]
+  alertmanagerSpec:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+
+grafana:
+  admin:
+    existingSecret: grafana-admin      # created by install.ps1 with a random password
+    userKey: admin-user
+    passwordKey: admin-password
+  ingress:
+    enabled: true
+    ingressClassName: contour
+    hosts: [grafana.localhost]
+    path: /
+  defaultDashboardsTimezone: browser
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      searchNamespace: ALL
+
+# Docker Desktop's root filesystem is not a shared mount, which makes
+# node-exporter crash when it mounts / from the host.
+prometheus-node-exporter:
+  hostRootFsMount:
+    enabled: false

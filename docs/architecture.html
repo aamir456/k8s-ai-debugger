@@ -1,0 +1,276 @@
+<title>k8s-ai-debugger Architecture</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: one wide diagram up top, then three short "path" notes and the safety boundary. */
+  :root {
+    --bg: #f5f7f8;
+    --fg: #17202b;
+    --muted: #586474;
+    --line: #7d8898;
+    --surface: #ffffff;
+    --panel: #eaeef2;
+    --accent: #0b7a6a;
+    --accent-soft: #dcf1ed;
+    --font-display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+    --font-body: "Inter", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0e1319; --fg: #e4eaf1; --muted: #9ba7b6; --line: #6f7b8b;
+      --surface: #17202a; --panel: #121920; --accent: #3fc7b0; --accent-soft: #123a35;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0e1319; --fg: #e4eaf1; --muted: #9ba7b6; --line: #6f7b8b;
+    --surface: #17202a; --panel: #121920; --accent: #3fc7b0; --accent-soft: #123a35;
+    color-scheme: dark;
+  }
+  body {
+    background: var(--bg); color: var(--fg);
+    font-family: var(--font-body); font-size: 15px; line-height: 1.55;
+  }
+  .wrap {
+    max-width: 1180px; margin: 0 auto;
+    padding-block: 40px 56px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    display: grid; gap: 32px;
+  }
+  header { display: grid; gap: 8px; max-width: 68ch; }
+  .eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+  h1 { font-family: var(--font-display); font-weight: 700; font-size: clamp(28px, 4vw, 40px); line-height: 1.1; margin: 0; text-wrap: balance; }
+  h2 { font-family: var(--font-display); font-weight: 600; font-size: 19px; margin: 0; text-wrap: balance; }
+  p { margin: 0; }
+  .lede { color: var(--muted); font-size: 16px; }
+  code { font-family: var(--font-mono); font-size: .88em; background: var(--panel); padding: 1px 5px; border-radius: 4px; }
+
+  figure { margin: 0; display: grid; gap: 12px; }
+  .diagram { overflow-x: auto; background: var(--surface); border: 1px solid var(--panel); border-radius: 10px; padding: 12px; }
+  .diagram svg { display: block; width: 100%; min-width: 860px; height: auto; color: var(--fg); }
+  figcaption { color: var(--muted); font-size: 14px; max-width: 80ch; }
+
+  /* SVG classes (same names are styled for the standalone docs/architecture.svg) */
+  .panel { fill: var(--panel); stroke: none; }
+  .group { fill: none; stroke: var(--line); stroke-dasharray: 5 4; }
+  .box { fill: var(--surface); stroke: var(--line); stroke-width: 1.2; }
+  .box-accent { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2; }
+  .t { fill: var(--fg); font-family: var(--font-body); font-size: 14px; font-weight: 600; }
+  .s { fill: var(--muted); font-family: var(--font-body); font-size: 11.5px; }
+  .k { fill: var(--muted); font-family: var(--font-mono); font-size: 11px; letter-spacing: .08em; }
+  .e { fill: var(--fg); font-family: var(--font-mono); font-size: 11px; }
+  .ea { fill: var(--accent); font-family: var(--font-mono); font-size: 11px; font-weight: 500; }
+  .edge { fill: none; stroke: var(--line); stroke-width: 1.5; }
+  .edge-dash { fill: none; stroke: var(--line); stroke-width: 1.5; stroke-dasharray: 4 4; }
+  .edge-accent { fill: none; stroke: var(--accent); stroke-width: 2.2; }
+  .ah { fill: var(--line); }
+  .ah-accent { fill: var(--accent); }
+
+  .paths { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
+  .path { display: grid; gap: 8px; align-content: start; min-width: 0; }
+  .path ol { margin: 0; padding-left: 20px; display: grid; gap: 4px; color: var(--fg); }
+  .path .tag { font-family: var(--font-mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+
+  .boundary { display: grid; gap: 10px; border-top: 1px solid var(--panel); padding-top: 24px; }
+  .rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px 24px; margin: 0; padding: 0; list-style: none; }
+  .rules li { display: flex; gap: 10px; align-items: baseline; min-width: 0; }
+  .pill { font-family: var(--font-mono); font-size: 11px; padding: 1px 7px; border-radius: 999px; white-space: nowrap; }
+  .pill.ok { background: var(--accent-soft); color: var(--accent); }
+  .pill.no { background: var(--panel); color: var(--muted); }
+</style>
+
+<div class="wrap">
+  <header>
+    <span class="eyebrow">k8s-ai-debugger · architecture</span>
+    <h1>How Claude sees the cluster</h1>
+    <p class="lede">A notes app runs on a local kind cluster with Prometheus and Grafana. Claude investigates it through the open-source <code>kubernetes-mcp-server</code>, running read-only in a container on the same Docker network.</p>
+  </header>
+
+  <figure>
+    <div class="diagram">
+      <svg viewBox="0 0 1210 760" role="img" aria-label="Claude Code starts the kubernetes-mcp-server container over stdio. The container calls the Kubernetes API with a read-only ServiceAccount token and queries Prometheus and Alertmanager over NodePorts. The browser reaches the app and Grafana through Envoy on localhost:8080. Prometheus scrapes the app and exporters and fires alerts to Alertmanager.">
+        <defs>
+          <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path class="ah" d="M0,0 L10,5 L0,10 z"/>
+          </marker>
+          <marker id="arwa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path class="ah-accent" d="M0,0 L10,5 L0,10 z"/>
+          </marker>
+        </defs>
+
+        <!-- Windows host -->
+        <rect class="panel" x="16" y="16" width="270" height="728" rx="12"/>
+        <text class="k" x="36" y="42">WINDOWS 11 HOST</text>
+
+        <rect class="box" x="36" y="56" width="230" height="60" rx="8"/>
+        <text class="t" x="52" y="81">PowerShell</text>
+        <text class="s" x="52" y="100">kubectl · chaos.ps1 · install.ps1</text>
+
+        <rect class="box-accent" x="36" y="150" width="230" height="74" rx="8"/>
+        <text class="t" x="52" y="180">Claude Code</text>
+        <text class="s" x="52" y="200">loads .mcp.json at session start</text>
+
+        <rect class="box" x="36" y="360" width="230" height="74" rx="8"/>
+        <text class="t" x="52" y="390">Browser</text>
+        <text class="s" x="52" y="410">notes app · Grafana · Prometheus</text>
+
+        <!-- Docker Desktop -->
+        <rect class="panel" x="300" y="16" width="894" height="728" rx="12"/>
+        <text class="k" x="318" y="42">DOCKER DESKTOP (WSL2) · NETWORK "kind"</text>
+
+        <rect class="box-accent" x="316" y="142" width="214" height="90" rx="8"/>
+        <text class="t" x="332" y="168">kubernetes-mcp-server</text>
+        <text class="s" x="332" y="188">container · read_only = true</text>
+        <text class="s" x="332" y="206">core + observability/metrics</text>
+        <text class="s" x="332" y="222">19 tools</text>
+
+        <!-- kind cluster -->
+        <rect class="group" x="590" y="52" width="590" height="680" rx="10"/>
+        <text class="k" x="606" y="74">KIND CLUSTER "ai-debug" · 3 NODES</text>
+
+        <rect class="box" x="610" y="86" width="250" height="118" rx="8"/>
+        <text class="t" x="626" y="112">kube-apiserver :6443</text>
+        <text class="s" x="626" y="134">SA mcp/mcp-viewer → view +</text>
+        <text class="s" x="626" y="151">mcp-cluster-reader</text>
+        <text class="s" x="626" y="172">denied: Secrets, exec,</text>
+        <text class="s" x="626" y="189">nodes/proxy, all writes</text>
+
+        <rect class="box" x="900" y="100" width="260" height="60" rx="8"/>
+        <text class="t" x="916" y="125">metrics-server</text>
+        <text class="s" x="916" y="144">serves pods_top · nodes_top</text>
+
+        <rect class="box" x="610" y="360" width="250" height="74" rx="8"/>
+        <text class="t" x="626" y="390">Envoy (Contour)</text>
+        <text class="s" x="626" y="410">hostPort 80 → localhost:8080</text>
+
+        <!-- demo-app namespace -->
+        <rect class="group" x="884" y="250" width="292" height="210" rx="8"/>
+        <text class="k" x="896" y="272">NS demo-app</text>
+        <rect class="box" x="900" y="284" width="260" height="74" rx="8"/>
+        <text class="t" x="916" y="312">notes-app ×2</text>
+        <text class="s" x="916" y="332">FastAPI · HPA 2–6 · /metrics</text>
+        <rect class="box" x="900" y="390" width="260" height="56" rx="8"/>
+        <text class="t" x="916" y="414">redis-0</text>
+        <text class="s" x="916" y="432">StatefulSet + 1Gi PVC</text>
+
+        <!-- monitoring namespace -->
+        <rect class="group" x="600" y="478" width="576" height="244" rx="8"/>
+        <text class="k" x="612" y="500">NS monitoring</text>
+        <rect class="box" x="610" y="512" width="250" height="80" rx="8"/>
+        <text class="t" x="626" y="540">Prometheus :30090</text>
+        <text class="s" x="626" y="560">scrapes every 15s</text>
+        <text class="s" x="626" y="577">10 notes-app alert rules</text>
+        <rect class="box" x="610" y="630" width="250" height="70" rx="8"/>
+        <text class="t" x="626" y="658">Alertmanager :30093</text>
+        <text class="s" x="626" y="678">RedisDown, OOMKilled, …</text>
+        <rect class="box" x="900" y="512" width="260" height="80" rx="8"/>
+        <text class="t" x="916" y="540">Grafana</text>
+        <text class="s" x="916" y="560">Notes App dashboard</text>
+        <text class="s" x="916" y="577">grafana.localhost:8080</text>
+        <rect class="box" x="900" y="630" width="260" height="70" rx="8"/>
+        <text class="t" x="916" y="658">kube-state-metrics</text>
+        <text class="s" x="916" y="678">node-exporter · kubelet/cAdvisor</text>
+
+        <!-- operator path: kubectl (admin) -->
+        <line class="edge-dash" x1="266" y1="86" x2="606" y2="86" marker-end="url(#arw)"/>
+        <text class="e" x="320" y="78">kubectl (admin) · 127.0.0.1:62500</text>
+
+        <!-- Claude ↔ MCP: stdio -->
+        <line class="edge-accent" x1="266" y1="187" x2="312" y2="187" marker-end="url(#arwa)"/>
+        <text class="ea" x="270" y="179">stdio</text>
+
+        <!-- MCP → apiserver -->
+        <line class="edge-accent" x1="530" y1="187" x2="606" y2="187" marker-end="url(#arwa)"/>
+        <text class="ea" x="536" y="170">HTTPS</text>
+        <text class="ea" x="536" y="182">token</text>
+
+        <!-- apiserver → metrics-server -->
+        <line class="edge" x1="860" y1="130" x2="896" y2="130" marker-end="url(#arw)"/>
+
+        <!-- MCP → Prometheus (PromQL) -->
+        <polyline class="edge-accent" points="470,232 470,545 606,545" marker-end="url(#arwa)"/>
+        <text class="ea" x="480" y="537">PromQL :30090</text>
+
+        <!-- MCP → Alertmanager (get_alerts) -->
+        <polyline class="edge-accent" points="400,232 400,660 606,660" marker-end="url(#arwa)"/>
+        <text class="ea" x="410" y="652">get_alerts :30093</text>
+
+        <!-- Browser → Envoy -->
+        <line class="edge" x1="266" y1="397" x2="606" y2="397" marker-end="url(#arw)"/>
+        <text class="e" x="486" y="389">:8080 · Host header</text>
+
+        <!-- Envoy → notes-app, Envoy → Grafana -->
+        <polyline class="edge" points="860,380 880,380 880,330 896,330" marker-end="url(#arw)"/>
+        <polyline class="edge" points="860,420 872,420 872,470 1030,470 1030,508" marker-end="url(#arw)"/>
+        <text class="e" x="1040" y="492">grafana.*</text>
+
+        <!-- notes-app → redis -->
+        <line class="edge" x1="1030" y1="358" x2="1030" y2="386" marker-end="url(#arw)"/>
+        <text class="e" x="1040" y="377">:6379</text>
+
+        <!-- Grafana → Prometheus -->
+        <line class="edge" x1="900" y1="552" x2="864" y2="552" marker-end="url(#arw)"/>
+        <text class="e" x="866" y="544">query</text>
+
+        <!-- Prometheus scrapes notes-app and exporters -->
+        <polyline class="edge-dash" points="845,512 845,452 892,452 892,345 896,345" marker-end="url(#arw)"/>
+        <text class="e" x="836" y="494" text-anchor="end">scrapes /metrics</text>
+        <polyline class="edge-dash" points="860,580 880,580 880,665 896,665" marker-end="url(#arw)"/>
+        <text class="e" x="884" y="620">scrapes</text>
+
+        <!-- Prometheus → Alertmanager -->
+        <line class="edge" x1="735" y1="592" x2="735" y2="626" marker-end="url(#arw)"/>
+        <text class="e" x="745" y="614">fires</text>
+      </svg>
+    </div>
+    <figcaption>Teal is the AI path: Claude Code launches the MCP server container over stdio, and the container reaches the Kubernetes API with a read-only ServiceAccount token and Prometheus/Alertmanager through NodePorts on the <code>kind</code> Docker network. Your own traffic goes through Envoy on <code>localhost:8080</code>; <code>prometheus.localhost</code> and <code>alertmanager.localhost</code> route the same way as Grafana.</figcaption>
+  </figure>
+
+  <section class="paths" aria-label="Request paths">
+    <div class="path">
+      <span class="tag">Path 1 · cluster state</span>
+      <h2>Claude asks about pods</h2>
+      <ol>
+        <li>You ask a question in Claude Code.</li>
+        <li>Claude calls a tool such as <code>pods_list_in_namespace</code>.</li>
+        <li>The MCP server calls <code>kube-apiserver</code> with the <code>mcp-viewer</code> token.</li>
+        <li>RBAC allows reads; Secrets and writes are refused.</li>
+      </ol>
+    </div>
+    <div class="path">
+      <span class="tag">Path 2 · alerts and history</span>
+      <h2>Claude starts from an alert</h2>
+      <ol>
+        <li>Prometheus scrapes the app and kube-state-metrics every 15s.</li>
+        <li>A rule such as <code>RedisDown</code> fires to Alertmanager.</li>
+        <li>Claude calls <code>get_alerts</code>, then PromQL with <code>execute_range_query</code>.</li>
+        <li>It drills into pods, events and logs to confirm the cause.</li>
+      </ol>
+    </div>
+    <div class="path">
+      <span class="tag">Path 3 · you</span>
+      <h2>You watch the same signals</h2>
+      <ol>
+        <li>The browser hits <code>localhost:8080</code>, mapped to the control-plane node.</li>
+        <li>Envoy routes by Host header to the app or Grafana.</li>
+        <li>Grafana queries the same Prometheus Claude uses.</li>
+        <li><code>chaos.ps1</code> breaks and resets the app with your admin kubectl.</li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="boundary">
+    <h2>What the AI identity can and cannot do</h2>
+    <ul class="rules">
+      <li><span class="pill ok">allowed</span><span>Read pods, logs, events, Deployments, Services, HPAs, nodes</span></li>
+      <li><span class="pill ok">allowed</span><span>Pod and node metrics, PromQL, alerts, silences (read)</span></li>
+      <li><span class="pill ok">allowed</span><span>Read PrometheusRules, PodMonitors, ServiceMonitors</span></li>
+      <li><span class="pill no">denied</span><span>Secrets (RBAC + <code>denied_resources</code>)</span></li>
+      <li><span class="pill no">denied</span><span>Any write: scale, patch, delete, exec, create silences</span></li>
+      <li><span class="pill no">denied</span><span>nodes/proxy, and every other kubeconfig context such as EKS</span></li>
+    </ul>
+  </section>
+</div>
