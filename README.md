@@ -38,7 +38,6 @@ An interactive version of the diagram is in [`docs/architecture.html`](docs/arch
 - [Troubleshooting](#troubleshooting)
 - [Talking to the cluster through Claude](#talking-to-the-cluster-through-claude)
 - [Security model](#security-model)
-- [Credits](#credits)
 
 ---
 
@@ -362,11 +361,3 @@ flowchart LR
 
 Ports 8080/8443 listen on all interfaces. Grafana has a password; Prometheus and
 Alertmanager do not. This is a local lab: don't run it on an untrusted network.
-
-## Credits
-
-- [`containers/kubernetes-mcp-server`](https://github.com/containers/kubernetes-mcp-server) (Apache-2.0): the MCP server.
-- [kind](https://kind.sigs.k8s.io/), [Contour](https://projectcontour.io/),
-  [metrics-server](https://github.com/kubernetes-sigs/metrics-server),
-  [kube-prometheus-stack](https://github.com/prometheus-community/helm-charts).
-- Built with [Claude Code](https://claude.com/claude-code).
